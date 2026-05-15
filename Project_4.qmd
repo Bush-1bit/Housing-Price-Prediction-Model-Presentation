@@ -1,0 +1,601 @@
+---
+title: "Assignment 4: Project 3 Presentation"
+subtitle: "Prediction Model Findings + Programming Concepts"
+author: "Md Boshirul Azad"
+format:
+  revealjs:
+    incremental: true
+    scrollable: true
+    theme: simple
+    slide-number: true
+    toc: false
+    embed-resources: true
+execute:
+  echo: true
+  warning: false
+  message: false
+editor: visual
+---
+
+## Insights of House Price Driving Factors
+
+## Project Overview
+
+-   **Dataset:** The Ames Housing.
+-   **Prediction goal:** Find the influential factors that drives sales price.
+-   **Audience:** Important for property investors and owners.
+
+## Problem Statement
+
+### What problem am I solving?
+
+-   The problem is to predict sales prices by analyzing influential factors such as overall quality, neighborhood, lot area, Gross Living Area, garage car.
+
+-   These models help having a accurate price prediction which helps buys, sellers, and investment agents to make informed financial decision by not overpaying and underpaying anyone.
+
+-   These models uses the provided historical data to make accurate prediction. By comparing different models, we can determine which variables influences the house price more.
+
+## Audience
+
+### Who is this presentation for?
+
+-   This presentation is for house buyers and sellers, and property investors.
+
+-   They can use the insights to make decision on house prices, evaluating house prices, or identifying the influential factors.
+
+-   The audience doesn't need any deep technical knowledge. They need basic understanding of graphs and regression line.
+
+## Setup
+
+```{r}
+# Load Libraries
+library(ggplot2) # This library is useful for data visualization
+library(scales) #Formats output data
+library(janitor) #Formats output data
+library(tidyverse)
+library(forcats)
+library(rlang)
+library(patchwork)
+library(gt)
+library(glmnet)
+library(tidymodels)  # modern unified framework (includes rsample, parsnip, yardstick, etc.)
+library(broom)       # tidy model summaries
+library(performance) # model diagnostics
+library(see)         # visualization for performance package
+library(vip)         # variable importance plots
+library(MASS)
+library(car)        # for VIF
+library(caret)      # for preprocessing and modeling
+library(dplyr) # This library is useful for data manipulation
+library(conflicted)
+
+library(tidyverse)
+
+library(AmesHousing)
+bush_data <- make_ames()
+
+
+```
+
+## Data Overview
+
+### What data am I using?
+
+```{r}
+# View the structure of the dataset
+glimpse(bush_data)
+```
+
+```{r}
+# Show a few rows
+head(bush_data)
+```
+
+Explanation:
+
+-   There are 2,930 rows and 81 columns in your dataset.
+
+-   The dataset represents the variables of houses in Ames in Iowa.
+
+-   Important data limitations can be not having all the factors such as current interest rate, house market, and the data set also has large deviation.
+
+## Outcome and Predictor Variables
+
+### Model Variables
+
+```{r}
+# Define your outcome and predictor variables here
+# Replace these placeholders with your real variables
+
+outcome_var <- "Sale_Price"
+
+predictor_vars <- c("Gr_Liv_Area", " Neighborhood", "Lot_Area", "Overall_Qual", "Garage_Cars", "Gr_Liv_Area:(Gross Living Area)")
+
+#outcome_var
+#predictor_vars
+```
+
+Explanation:
+
+-   Outcome variable: Selling price of houses.
+
+-   Predictor variables: Neighborhood, Lot_Area, Overall_Qual, Garage_Cars, Gr_Liv_Area: Gross Living Area
+
+-   These elements are selected because they play a important role to influence house prices.
+
+## Data Cleaning and Preparation
+
+### Preparing the data
+
+```{r}
+# Example cleaning template
+model_data <- bush_data %>%
+
+     dplyr:: select(c(Sale_Price,
+                     Gr_Liv_Area,
+                     Garage_Cars,
+                     Neighborhood,
+                     Lot_Area,
+                     Overall_Qual)) %>% drop_na()
+ 
+summary(model_data)
+```
+
+Explanation:
+
+-   Any row having a column with NA data was removed by drop_na().
+
+-   No rows were filtered in the analysis but the significant elements were selected.
+
+-   One variable was created but wasn't used for the lack of significance.
+
+## Exploratory Analysis
+
+### Visualizing the data
+
+Gross Living Area:
+
+```{r}
+
+ggplot(model_data, aes(x = Gr_Liv_Area, y = Sale_Price)) +
+
+  geom_point() +
+  
+  geom_smooth(method = "lm", se = FALSE)
+
+```
+
+Explanation: 
+
+- This shows a positive relation between Gross Living Area and sale prices. More Gross Living Area tends give more value to the house prices.
+
+-   The outliers suggests there more other factors influencing the prices too.
+
+Garage Cars:
+
+```{r}
+ggplot(model_data, aes(x = Garage_Cars, y = Sale_Price)) +
+
+  geom_point() +
+  
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+Explanation:
+
+-   The blue line shows positive relation, as the number of capacity increases sales price goes up.
+
+-   The scattered data shows house prices are driven by some other factors too. There are some outliers.
+
+Neighborhood:
+
+```{r}
+ggplot(model_data, aes(x = Neighborhood, y = Sale_Price)) +
+
+  geom_point() +
+  
+  geom_smooth(method = "lm", se = FALSE)
+
+```
+
+Explanation:
+
+-   The graph shows different values in different neighborhoods and this is indication that neighborhoods play an important role in house pricing.
+
+Lot Area:
+
+```{r}
+ggplot(model_data, aes(x = Lot_Area, y = Sale_Price)) +
+
+  geom_point() +
+  
+  geom_smooth(method = "lm", se = FALSE)
+
+```
+
+Explanation: 
+
+- This graphs shows a positive but weak relation between lot area and sales price because the data is clustered in one place and too many outliers.
+
+Overall Quality:
+
+```{r}
+ggplot(model_data, aes(x = Overall_Qual, y = Sale_Price)) +
+
+  geom_point() +
+  
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+Explanation:
+
+-   This graph shows different prices at different quality level.
+
+-   It indicates that the better the quality higher will be the price.
+
+## Linear Regression Model
+
+### Build the model
+
+```{r}
+# Create a model formula
+ model_formula <- as.formula(
+              paste("Sale_Price", " ~ ", paste(c(
+                     "Gr_Liv_Area",
+                     "Garage_Cars",
+                     "Neighborhood",
+                     "Lot_Area",
+                     "Overall_Qual")), collapse = " + ") )
+
+ model_formula
+```
+
+Model 1: Neighborhood and Overall Quality
+
+```{r}
+# Fit the model
+lm_model1 <- lm(Sale_Price ~ Neighborhood + Overall_Qual, data = model_data)
+
+summary(lm_model1)
+```
+
+Brief explanation:
+
+-   This model is taking neighborhood and overall quality to predict the housing prices.
+
+-   It is giving \~0.77 R-square score which is a indication of a good model providing good accuracy.
+
+Model 2: Overall Quality and Gross Living Area
+
+```{r}
+
+lm_model2 <- lm(Sale_Price ~ Overall_Qual + Gr_Liv_Area, data = model_data)
+
+summary(lm_model2)
+
+```
+
+Brief explanation:
+
+-   This model is taking overall quality and Gross Living Area to predict the housing prices.
+
+-   It is giving \~0.78 R-square score which is a indication of a good model providing good accuracy.
+
+Model 3: Lot Area and Garage Cars
+
+```{r}
+lm_model3 <- lm(Sale_Price ~ Lot_Area + Garage_Cars, data = model_data)
+
+summary(lm_model3)
+```
+
+Brief explanation:
+
+-   This model is taking lot area and garage cars to predict the housing prices.
+
+-   It is giving \~0.44 R-square score which is a indication of a weak model with low predictive accuracy.
+
+## Model Performance
+
+### How well does the model perform?
+
+Model 1: Neighborhood and Overall Quality
+
+```{r}
+# Tidy model output
+ model_summary1 <- glance(lm_model1)
+ model_coefficients1 <- tidy(lm_model1)
+ 
+ model_summary1
+ model_coefficients1
+```
+
+Discuss:
+
+-   The R-squared value is 0.7686918 or \~ 0.77.
+
+-   The model seems useful because the R-squared value is quiet big and the p- value is small.
+
+-   These values indicates that the model can predict the house prices by neighborhood and overall Quality with accuracy.
+
+Model 2: Overall Quality and Gross Living Area
+
+```{r}
+# Tidy model output
+ model_summary2 <- glance(lm_model2)
+ model_coefficients2 <- tidy(lm_model2)
+ 
+ model_summary2
+ model_coefficients2
+```
+
+Discuss:
+
+-   The R-squared value is 0.7810357 or \~ 0.78.
+
+-   The model seems useful because the R-squared value is quiet big and the p- value is small.
+
+-   These values indicates that the model can predict the house prices by Overall Quality and Gross Living Area with quiet accuracy.
+
+Model 3: Lot Area and Garage Cars
+
+```{r}
+# Tidy model output
+ model_summary3 <- glance(lm_model3)
+ model_coefficients3 <- tidy(lm_model3)
+ 
+ model_summary3
+ model_coefficients3
+```
+
+Discuss:
+
+-   The R-squared value is 0.4426904 or \~ 0.44.
+
+-   The model seems weak and unreliable because the R-squared value is quiet small even though the p- value is small.
+
+-   These values indicates that the model can't predict the house prices by lot area and garage cars with enough accuracy.
+
+## Most Important Variables
+
+### Which predictors matter most?
+
+Model 1: Neighborhood and Overall Quality
+
+```{r}
+# View coefficients sorted by absolute value
+model_coefficients1 %>%
+  
+  dplyr::filter(term != "(Intercept)") %>%
+  
+  dplyr::mutate(abs_estimate = abs(estimate)) %>%
+  
+  dplyr::arrange(desc(abs_estimate))
+```
+
+Model 2: Overall Quality and Gross Living Area
+
+```{r}
+# View coefficients sorted by absolute value
+model_coefficients2 %>%
+  
+  dplyr::filter(term != "(Intercept)") %>%
+  
+  dplyr::mutate(abs_estimate = abs(estimate)) %>%
+  
+  dplyr::arrange(desc(abs_estimate))
+```
+
+```{r}
+# View coefficients sorted by absolute value
+model_coefficients3 %>%
+  
+  dplyr::filter(term != "(Intercept)") %>%
+  
+  dplyr::mutate(abs_estimate = abs(estimate)) %>%
+  
+  dplyr::arrange(desc(abs_estimate))
+
+```
+
+Explain:
+
+-   Neighborhood, Overall quality, and Gross Living Area appears to be the most important predictors.
+
+-   For neighborhoods there are no positive or negative effective because it depended on specific neighborhood. For overall quality, it has a positive effect on sale price and same goes for Gross Living Area.
+
+-   These insights matters because they reflect that the quality of structure and area or location matters when it comes to housing prices.
+
+## Key Findings
+
+### Main conclusions from the models
+
+```{r}
+Check <- model_data %>% 
+  
+         dplyr:: select(Neighborhood, Sale_Price) %>% 
+   
+         dplyr :: group_by(Neighborhood) %>% 
+  
+         dplyr::summarise(total_price= sum(Sale_Price),
+                          
+                          avg_price = mean(Sale_Price),
+                          
+                          count = n() ) %>%
+                          
+                          arrange(desc(avg_price))
+
+Check
+```
+
+Claims:
+
+-   Model 1 and 2 predicts prices accurately using factors like neighborhood, overall quality, and Gross Living Area.
+
+-   A one-unit increase in overall excellent quality and Gross Living Area is associated with a \~\$295K and \~\$55 increase in housing price.
+
+-   Neighborhood and overall quality had the strongest estimated relationship with the sale price. Neighborhoods such as Northridge, Stone_Brook, and Northridge_Heights has over \~\$320K avg sale price.
+
+-   The model 1 and 2 explained 77% and 78% of the variation in the outcome.
+
+## Basic Programming Concept 1: Variables
+
+### What is a variable?
+
+```{r}
+
+# Example variables from this project
+
+#outcome_var = "Sale price"
+
+#predictor_vars = Neighborhoods, Overall_Qual, Lot_area, Garage_cars, Gr_Liv_Area
+```
+
+Explain in your own words: - A variable is in programming is a tag created where data such as quantitative, categorical, and identity are stored.
+
+-   We used variable to store specific function that were used to select the significant data, modify and present them in comprehensive way possible. Variables like Neighborhoods, Overall_Qual, Lot_area, Garage_cars, Gr_Liv_Area were used as predictor to predict the outcome variable which is Sales_Price.
+
+## Basic Programming Concept 2: Functions
+
+### What is a function?
+
+```{r}
+# Example functions used in this project
+ head(bush_data)
+ glimpse(bush_data)
+ #lm(model_formula, data = model_data)
+ summary(lm_model1)
+ summary(lm_model2)
+ summary(lm_model3)
+```
+
+Explain in your own words:
+
+-   A function is a code that does a specific task.
+
+-   A function that I used was summary(lm_model1).
+
+-   It takes model 1 as input which consists the data of Neighborhoods and Overall_Qual.
+
+-   As output it summarises the model and gives us R-square, residual, and p-value etc. to see if the model is reliable or not..
+
+## Basic Programming Concept 3: Data Types
+
+### What data types appear in my project?
+
+```{r}
+# Check data types
+sapply(model_data, class)
+
+```
+
+Explain:
+
+-   We have found integers, numeric, and factor type data.
+
+-   Data types matter because R interprets different data types differently. To do calculations and plotting specific graphs, it uses numeric values but for grouping or for comparison it uses factor values.
+
+-   They effect the analysis a lot because if a data type is not represented correctly the model might collapse or miss interpret the task.
+
+## Advanced Concept 1: Pareto Principle
+
+### Applying the Pareto Principle
+
+```{r}
+# Optional: create a simple ranking of predictor importance
+ model_coefficients1 %>%
+  dplyr:: filter(term != "(Intercept)") %>%
+  dplyr::mutate(abs_estimate = abs(estimate)) %>%
+  dplyr::arrange(desc(abs_estimate))
+
+```
+
+Explain in your own words:
+
+-   The Pareto principle means a small number of factor or factors make up most of the outcome value.
+
+-   In this project among all the elements only Neighborhoods, Overall_Qual, Gr_living_Area had more impact.
+
+-   House prices are driven by some factors.
+
+## Advanced Concept 2: Correlation
+
+### Understanding relationships between variables
+
+```{r}
+# Keep only numeric columns for correlation analysis
+numeric_data <- model_data %>%
+  
+dplyr:: select(where(is.numeric))
+
+ cor(numeric_data, use = "complete.obs")
+
+```
+
+```{r}
+# Optional: visualize a key relationship
+ggplot(model_data, aes(x = Gr_Liv_Area, y = Sale_Price)) +
+  
+  geom_point() +
+  
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+Explain:
+
+-   Correlation means how two variables relate to each other.
+
+-   In this project, Gross Living Area has a correlation.
+
+-   It has  a strong and positive correlation.
+
+## Advanced Concept 3: Standard Normal Form
+
+### Standardizing a variable with z-scores
+
+```{r}
+# Example: standardize the outcome variable if it is numeric
+# Replace with your actual numeric variable name if needed
+
+model_data <- model_data %>%
+  
+   mutate(outcome_z = as.numeric(scale(Sale_Price)))
+
+ summary(model_data$outcome_z)
+```
+
+Explain:
+
+-   z-score shows how far the value is from actual mean and it is measured in standard deviations.
+
+-   z-scores or standardization helps with comparing values and it puts every data on a same scale.
+
+-   z-score shows how many standard deviation away is the actual value is from mean.
+
+## Recommendations
+
+### What should the audience do with these findings?
+
+- For investments and later resell values, property investors and home buyers should focus on Neighborhoods, the quality of the houses, and bigger living area. It ensures best possible investment to for future resell value for every individual and entity.
+
+
+
+## Final Takeaways
+
+### Conclusion
+
+Summarize:
+
+-   We predicted the sale prices of houses.
+
+-   The factors mattered most was overall quality, neighborhood, Gross Living Area.
+
+-   Both of our model 1 and 2 gave us good R-square such as 0.77 and 0.78. These values suggest these models are quiet accurate.
+
+-   I learned how we can use code to analyze vast amount by using some function and get the mean, sum. We can make different graphs, correlation, and pareto to visualize text data.
+
+## References or Appendix
+Ames Hosusing
+### Optional
+
+Include citations, extra charts, or supporting output if needed.
